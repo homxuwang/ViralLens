@@ -1,0 +1,13 @@
+name = "virallens-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-12"
+
+[vars]
+AI_ENDPOINT = "https://api.openai.com/v1"
+AI_MODEL = "gpt-4o-mini"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "virallens"
+database_id = "REPLACE_WITH_CREATED_D1_ID"
+migrations_dir = "migrations"
