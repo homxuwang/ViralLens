@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { browser } from 'wxt/browser';
 import { extractSchema, type NoteContent } from '../lib/models';
-import { mergeNotes, rankNotes } from '../lib/research';
+import { filterAndSortNotes, mergeNotes, rankNotes, type NoteSortKey } from '../lib/research';
 import { authorize, defaults, generate, generateImage, loadSettings, storeSettings, type Settings } from '../lib/ai';
 import { library, saveContent, type SavedContent } from '../lib/storage';
 import { download, toHtml } from '../lib/export';
 import type { Task } from '../lib/prompts';
 import { withXPostSource } from '../lib/x-to-wechat';
 import { classifyPage } from '../lib/page-context';
+import { parseTopics, type TopicOption } from '../lib/topics';
 
 export function Workspace({ section, openedDraftId }: { section: number; openedDraftId?: string }) {
   const [settings, setSettings] = useState(defaults);
@@ -26,6 +27,11 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
   const [records, setRecords] = useState<SavedContent[]>([]);
   const [type, setType] = useState('all');
   const [minimum, setMinimum] = useState(0);
+  const [sortBy, setSortBy] = useState<NoteSortKey>('relativeScore');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [topics, setTopics] = useState<TopicOption[]>([]);
+  const [selectedTopicId, setSelectedTopicId] = useState('');
   useEffect(() => { loadSettings().then(setSettings).catch(() => setStatus('设置读取失败')); }, []);
   useEffect(() => {
     if (section !== 4) return;
@@ -68,10 +74,19 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
     if (task === 'xToWechat' && /^(?:https?:\/\/\S+\s*)+$/.test(source.trim())) throw new Error('请打开 X 帖子详情后采集，或粘贴帖子正文。');
     const captured = notes[0];
     const sourceUrl = captured?.platform === 'x' && !source.includes(captured.sourceUrl) ? '' : captured?.sourceUrl ?? '';
-    const text = await generate(settings, task, `${requirements}\n${source}`);
+    const chosenTopic = task === 'xhs' ? topics.find(t => t.id === selectedTopicId) : undefined;
+    const promptInput = chosenTopic ? `选中主题：\n${chosenTopic.raw}\n\n${requirements}\n${source}` : `${requirements}\n${source}`;
+    const text = await generate(settings, task, promptInput);
     setOpenedRecord(undefined);
     setOutput(task === 'xToWechat' ? withXPostSource(text, sourceUrl) : text);
     setOutputSource(sourceUrl);
+    if (task === 'topics') {
+      const parsed = parseTopics(text);
+      setTopics(parsed);
+      setSelectedTopicId(parsed[0]?.id ?? '');
+      setStatus(parsed.length ? `已拆解 ${parsed.length} 个选题，可点击下方选题卡片后生成小红书笔记` : '模型已返回选题，请核对事实后保存');
+      return;
+    }
     setStatus('模型已返回结果，请核对事实后保存');
   }
   const action = (label: string, fn: () => Promise<void>) => <button disabled={busy} onClick={() => void run(fn)}>{label}</button>;
@@ -96,7 +111,7 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
       {!records.length && <p>暂无本地记录。</p>}
     </article> : <>
       <article><h2>素材来源</h2><p>只读取当前网页已加载内容。滚动网页后点击增量采集；不会自动翻页或请求隐藏接口。</p>
-      {action('采集当前页 / 滚动后增量采集', collect)}<button disabled={busy} onClick={() => { setNotes([]); setSource(''); setStatus('采集样本已清空'); }}>清空样本</button>
+      {action('采集当前页 / 滚动后增量采集', collect)}<button disabled={busy} onClick={() => { setNotes([]); setSource(''); setTopics([]); setSelectedTopicId(''); setStatus('采集样本已清空'); }}>清空样本</button>
       <label>粘贴有权使用的素材 / 链接 / 视频字幕<textarea rows={7} value={source} onChange={e => setSource(e.target.value)} /></label>
       <p className="muted">链接需要在浏览器中打开再采集。{section === 3 && '改写 X 热帖时，先打开帖子详情并展开全文，或直接粘贴原文。'}</p>
       <label>导入 TXT / Markdown（请确认使用权）<input type="file" accept=".txt,.md" onChange={e => { const file = e.target.files?.[0]; if (file) void run(async () => { if (file.size > 2_000_000) throw new Error('文件请小于 2 MB'); setSource(await file.text()); setStatus('文件已导入本地'); }); }} /></label>
@@ -104,14 +119,23 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
       {section !== 1 && notes.length > 0 && <article><h2>原始内容预览</h2>{notes.map(n => <div key={n.id}><h3>{n.title || '无标题'}</h3><small>{n.author ?? '作者未知'} · {n.noteType} · {n.publishedAt ?? '发布时间未知'}</small><p style={{ whiteSpace: 'pre-wrap' }}>{n.content || '正文未在当前页加载'}</p>{n.images.slice(0, 9).map(url => <img key={url} src={url} alt="原始素材预览" loading="lazy" style={{ width: '30%', margin: '1%' }} />)}{n.video && <video controls src={n.video} style={{ width: '100%' }} />}<p className="muted">视频分析仅依据可见文字、封面与提供字幕，未自动观看或转录视频。</p></div>)}</article>}
       {section === 1 && <article><h2>已加载样本：{notes.length} 篇</h2><p>图文 {notes.filter(n => n.noteType === 'image').length} · 视频 {notes.filter(n => n.noteType === 'video').length} · 未知 {notes.filter(n => n.noteType === 'unknown').length}</p>
       <p className="muted">内部相对分：同账号同类型中位数归一化，点赞 40%、收藏 40%、评论 20%，缺失权重重新归一；中位数为零时不计算该指标。小样本结论有限，并非官方分数。</p>
-      <select value={type} onChange={e => setType(e.target.value)}><option value="all">全部类型</option><option value="image">图文</option><option value="video">视频</option></select><label>最低相对分<input type="number" min="0" step="0.5" value={minimum} onChange={e => setMinimum(Number(e.target.value))} /></label>
-      {rankNotes(notes).filter(n => (type === 'all' || n.noteType === type) && (n.relativeScore ?? 0) >= minimum).map(n => <div className="note" key={n.id}><a href={n.sourceUrl} target="_blank" rel="noreferrer">{n.title || '无标题'}</a><small>{n.noteType} · 赞 {n.metrics.likes ?? '未知'} · 藏 {n.metrics.collects ?? '未知'} · 评 {n.metrics.comments ?? '未知'} · 相对分 {n.relativeScore?.toFixed(2) ?? '未知'} · 同组 {n.peerCount} 篇</small></div>)}
+      <div className="filters">
+        <label>类型<select value={type} onChange={e => setType(e.target.value)}><option value="all">全部类型</option><option value="image">图文</option><option value="video">视频</option></select></label>
+        <label>排序<select value={sortBy} onChange={e => setSortBy(e.target.value as NoteSortKey)}><option value="relativeScore">综合相对分</option><option value="likes">点赞数</option><option value="collects">收藏数</option><option value="comments">评论数</option><option value="publishedAt">发布时间</option></select></label>
+        <label>最低相对分<input type="number" min="0" step="0.5" value={minimum} onChange={e => setMinimum(Number(e.target.value))} /></label>
+        <label>发布日期起<input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></label>
+        <label>发布日期至<input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></label>
+      </div>
+      {filterAndSortNotes(rankNotes(notes), { noteType: type, minScore: minimum, sortBy, dateFrom, dateTo }).map(n => <div className="note" key={n.id}><a href={n.sourceUrl} target="_blank" rel="noreferrer">{n.title || '无标题'}</a><small>{n.noteType} · {n.publishedAt ?? '时间未知'} · 赞 {n.metrics.likes ?? '未知'} · 藏 {n.metrics.collects ?? '未知'} · 评 {n.metrics.comments ?? '未知'} · 相对分 {n.relativeScore?.toFixed(2) ?? '未知'} · 同组 {n.peerCount} 篇</small></div>)}
       {action('保存采集样本', async () => { await saveContent({ title: `笔记样本 ${notes.length} 篇`, kind: 'notes', body: JSON.stringify(notes), sourceUrl: notes[0]?.sourceUrl ?? '' }); setStatus('样本已保存'); })}</article>}
       <article><h2>分析与原创创作</h2><label>目标人群、定位、风格、篇幅、选中主题等<textarea rows={4} value={requirements} onChange={e => setRequirements(e.target.value)} /></label><p className="muted">点击下方按钮会将素材和要求发送给所配置的模型提供商。请确认你有权使用这些内容。</p>
       {section === 1 ? action('分析赛道、定位与可模仿性', () => ai('research')) : <>
       {action('单篇结构与优化分析', () => ai('analyze'))}{action('原创标题和正文', () => ai('rewrite'))}{action('视频口播与分镜', () => ai('script'))}
       {section === 3 && <>{action('X 热帖 → 公众号文章', () => ai('xToWechat'))}{action('小红书 → 公众号大纲', () => ai('outline'))}{action('小红书 → 公众号全文', () => ai('wechat'))}{action('公众号 → 不同角度选题', () => ai('topics'))}{action('选中主题 → 小红书笔记', () => ai('xhs'))}</>}
       {action('图片 OCR / 视觉分析', async () => { const urls = notes.flatMap(n => n.images).slice(0, 4); if (!urls.length) throw new Error('请先采集包含图片的笔记'); setOutput(await generate(settings, 'vision', source, urls)); setOpenedRecord(undefined); setOutputSource(notes[0]?.sourceUrl ?? ''); setStatus('视觉模型已返回结果'); })}</>}
+      {section === 3 && topics.length > 0 && <div className="topics"><p className="muted">已拆解选题（点击选中后可直接点击「选中主题 → 小红书笔记」）：</p>
+        {topics.map(t => <button key={t.id} type="button" className="topic-card" aria-pressed={selectedTopicId === t.id} onClick={() => { setSelectedTopicId(t.id); setStatus(`已选中选题：${t.title}`); }}><strong>{t.title}</strong>{t.summary && <small>{t.summary}</small>}</button>)}
+      </div>}
       </article>
       <article><h2>原创封面 / 配图</h2><label>图片要求<textarea value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="主体、风格、比例和封面文案" /></label>{action('调用图片模型', async () => { if (!imagePrompt.trim()) throw new Error('请填写图片要求'); setImage(await generateImage(settings, imagePrompt)); setStatus('图片模型已返回图片'); })}
       {image && <><img className="generated" src={image} alt="模型生成的原创图片" />{action('保存图片记录', async () => { await saveContent({ title: imagePrompt.slice(0,60), kind: 'image', body: image, sourceUrl: '' }); setStatus('图片结果已保存；远程 URL 可能到期'); })}</>}</article>
