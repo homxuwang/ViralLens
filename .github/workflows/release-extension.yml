@@ -1,0 +1,95 @@
+name: Verify and Package Chrome Extension
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify (Typecheck, Lint, Test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck extension
+        run: pnpm typecheck
+
+      - name: Typecheck worker
+        run: pnpm --filter @virallens/worker typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+  package:
+    name: Build & Package Chrome MV3 Zip
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and zip Chrome MV3 extension
+        run: pnpm zip
+
+      - name: Verify package output
+        run: |
+          test -f apps/extension/.output/chrome-mv3/manifest.json
+          ls -lh apps/extension/.output/*.zip
+
+      - name: Upload Chrome extension zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: virallens-chrome-mv3
+          path: apps/extension/.output/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release on version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          ZIP_FILE="$(ls apps/extension/.output/*.zip | head -n 1)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP_FILE" --clobber
+          else
+            gh release create "$TAG" "$ZIP_FILE" \
+              --title "ViralLens $TAG" \
+              --generate-notes
+          fi

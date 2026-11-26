@@ -6,7 +6,8 @@
 - **博主研究排序与日期筛选**：在 `apps/extension/lib/research.ts` 新增 `parsePublishedTime` 与 `filterAndSortNotes`，在 `apps/extension/components/Workspace.tsx` 补齐按点赞数、收藏数、评论数、发布时间及综合相对分排序，以及按发布日期区间筛选（未知指标/未知时间不编造且排在末尾）。
 - **Markdown → 公众号 HTML 导出增强**：在 `apps/extension/lib/export.ts` 升级 `toHtml`，支持 `#`~`####` 标题、无序/有序列表、多行引用、分隔线、代码块、加粗/斜体/行内代码、安全 `https?://` 链接与图片渲染，保持 XSS 转义与 `javascript:` 协议拦截。
 - **公众号转小红书可点击选题**：新增 `apps/extension/lib/topics.ts` 解析多角度选题，优化 `apps/extension/lib/prompts.ts` 选题格式提示；在「跨平台创作」中生成选题后自动渲染可点击选题卡片，点击选中后直接带入「选中主题 → 小红书笔记」。
-- **本地自动化验证**：扩展与 Worker TypeScript 检查、`pnpm lint`、37 项 Vitest 单测（5 文件）与 `pnpm build` 均通过。
+- **GitHub Actions 自动校验与打包**：新增 `.github/workflows/release-extension.yml` 与 `pnpm zip` 脚本，在推送/PR/手动触发时先执行类型检查、Lint 和单元测试，全部通过后自动构建并打包为 Chrome MV3 发布包 `virallens-0.1.0-chrome.zip` 上传至 Actions Artifact；推送 `v*` 标签时自动发布到 GitHub Release。
+- **本地自动化验证**：扩展与 Worker TypeScript 检查、`pnpm lint`、37 项 Vitest 单测（5 文件）与 `pnpm zip` 均通过。
 - **仍待真实环境验收**：真实登录态小红书/公众号/X 网页 DOM 采集、真实 BYOK 模型凭证调用（文本/视觉/图片）、Cloudflare Workers + D1 云端部署（`wrangler.toml` 的 `database_id` 仍为占位符）。
 
 ## 浏览器本地一键图文改写
