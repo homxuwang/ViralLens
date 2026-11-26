@@ -76,6 +76,7 @@ jobs:
         with:
           name: virallens-chrome-mv3
           path: apps/extension/.output/*.zip
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
 
