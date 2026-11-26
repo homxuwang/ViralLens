@@ -9,5 +9,12 @@ export const noteSchema = z.object({
   extractionMethod: z.literal('visible-dom'), extractionConfidence: z.enum(['low', 'medium']), capturedAt: z.string(),
 });
 export type NoteContent = z.infer<typeof noteSchema>;
-export const extractSchema = z.object({ url: z.string().url(), author: z.string().nullable(), bio: z.string().nullable(), notes: z.array(noteSchema), warnings: z.array(z.string()) });
+export const extractSchema = z.object({
+  url: z.string().url(),
+  author: z.string().nullable(),
+  avatar: z.string().url().nullable().optional().default(null),
+  bio: z.string().nullable(),
+  notes: z.array(noteSchema),
+  warnings: z.array(z.string()),
+});
 export type ExtractResult = z.infer<typeof extractSchema>;

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { toHtml } from './export';
-import { filterAndSortNotes, parsePublishedTime, rankNotes } from './research';
+import { filterAndSortNotes, parsePublishedTime, rankNotes, summarizeSamples } from './research';
 import { parseTopics } from './topics';
+import { prompts } from './prompts';
 import type { NoteContent } from './models';
 
 const sampleNote = (overrides: Partial<NoteContent>): NoteContent => ({
@@ -138,5 +139,34 @@ describe('公众号转小红书可点击选题解析', () => {
     const listTopics = parseTopics('1. **成本视角**：省掉无效投入\n2. **效率视角**：缩短创作周期');
     expect(listTopics.map(t => t.title)).toEqual(['成本视角：省掉无效投入', '效率视角：缩短创作周期']);
     expect(parseTopics('这是一段普通说明文字，没有分点选题。')).toEqual([]);
+  });
+});
+
+describe('模块一博主样本统计与15项报告要求', () => {
+  it('准确统计图文视频数量与缺失字段', () => {
+    const stats = summarizeSamples([
+      sampleNote({ id: '1', noteType: 'image', publishedAt: '2026-11-20', metrics: { likes: 100, collects: null, comments: 5, shares: null } }),
+      sampleNote({ id: '2', noteType: 'video', publishedAt: null, metrics: { likes: null, collects: null, comments: null, shares: null } }),
+    ]);
+    expect(stats).toEqual({
+      total: 2,
+      image: 1,
+      video: 1,
+      unknown: 0,
+      missingLikes: 1,
+      missingCollects: 2,
+      missingComments: 1,
+      missingPublishedAt: 1,
+    });
+  });
+
+  it('研究提示词完整覆盖 2.2 要求的全部 15 项分析维度', () => {
+    for (const item of [
+      '博主账号定位', '核心内容赛道', '细分赛道', '目标用户', '内容支柱',
+      '图文与视频比例', '标题风格', '爆款内容共同规律', '高表现内容主题',
+      '内容生产难度', '可模仿性', '商业化方向', '差异化切入建议', '新账号定位建议', '初期选题建议',
+    ]) {
+      expect(prompts.research).toContain(item);
+    }
   });
 });

@@ -49,8 +49,11 @@ it('保留已采集的原帖链接以便署名和导出', () => {
   expect(withXPostSource(draft, url)).toBe(draft);
 });
 it('博主卡片提取并去重，缺失互动保持未知', () => {
-  document.body.innerHTML = '<div class="user-name">作者</div><section class="note-item"><a href="/explore/a"><img src="https://example.com/a.png"></a><div class="title">笔记标题</div><span class="like-wrapper"><span class="count">1.2万</span></span><span class="video-icon"></span></section>';
+  document.body.innerHTML = '<div class="avatar-wrapper"><img src="https://example.com/avatar.jpg"></div><div class="user-name">作者</div><div class="user-desc">科技与效率分享</div><section class="note-item"><a href="/explore/a"><img src="https://example.com/a.png"></a><div class="title">笔记标题</div><span class="like-wrapper"><span class="count">1.2万</span></span><span class="video-icon"></span></section>';
   const result = extractPage(document, 'https://www.xiaohongshu.com/user/profile/a');
+  expect(result.author).toBe('作者');
+  expect(result.avatar).toBe('https://example.com/avatar.jpg');
+  expect(result.bio).toBe('科技与效率分享');
   expect(result.notes).toHaveLength(1);
   expect(result.notes[0]?.noteType).toBe('video');
   expect(result.notes[0]?.metrics.likes).toBe(12000);

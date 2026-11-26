@@ -102,3 +102,16 @@ export function filterAndSortNotes(notes: RankedNote[], options: NoteFilterOptio
       return bv - av;
     });
 }
+
+export function summarizeSamples(notes: NoteContent[]) {
+  return {
+    total: notes.length,
+    image: notes.filter(n => n.noteType === 'image').length,
+    video: notes.filter(n => n.noteType === 'video').length,
+    unknown: notes.filter(n => n.noteType === 'unknown').length,
+    missingLikes: notes.filter(n => n.metrics.likes === null).length,
+    missingCollects: notes.filter(n => n.metrics.collects === null).length,
+    missingComments: notes.filter(n => n.metrics.comments === null).length,
+    missingPublishedAt: notes.filter(n => !n.publishedAt).length,
+  };
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { browser } from 'wxt/browser';
 import { extractSchema, type NoteContent } from '../lib/models';
-import { filterAndSortNotes, mergeNotes, rankNotes, type NoteSortKey } from '../lib/research';
+import { filterAndSortNotes, mergeNotes, rankNotes, summarizeSamples, type NoteSortKey } from '../lib/research';
 import { authorize, defaults, generate, generateImage, loadSettings, storeSettings, type Settings } from '../lib/ai';
 import { library, saveContent, type SavedContent } from '../lib/storage';
 import { download, toHtml } from '../lib/export';
@@ -14,6 +14,7 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
   const [settings, setSettings] = useState(defaults);
   const [notes, setNotes] = useState<NoteContent[]>([]);
   const [creatorPage, setCreatorPage] = useState('');
+  const [creatorProfile, setCreatorProfile] = useState<{ url: string; author: string | null; avatar: string | null; bio: string | null }>();
   const [source, setSource] = useState('');
   const [requirements, setRequirements] = useState('风格：专业深度；目标用户：；账号定位：；品牌产品：；篇幅：1500–2500字；笔记数量：1–3篇');
   const [output, setOutput] = useState('');
@@ -64,10 +65,18 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
     const currentCreator = section === 1 ? `${url.origin}${url.pathname.replace(/\/$/, '')}` : '';
     const merged = currentCreator && currentCreator === creatorPage ? mergeNotes(notes, data.notes) : data.notes;
     setCreatorPage(currentCreator);
+    const nextProfile = currentCreator ? { url: currentCreator, author: data.author, avatar: data.avatar, bio: data.bio } : undefined;
+    setCreatorProfile(nextProfile);
     setNotes(merged);
     const post = merged[0];
-    setSource(post?.platform === 'x' ? [post.content, post.author && `作者 ${post.author}`, `原帖 ${post.sourceUrl}`].filter(Boolean).join('\n\n') : JSON.stringify(merged, null, 2));
-    setStatus(`本次采集 ${data.notes.length} 篇，合计 ${merged.length} 篇。${data.warnings.join(' ')}`);
+    setSource(
+      post?.platform === 'x'
+        ? [post.content, post.author && `作者 ${post.author}`, `原帖 ${post.sourceUrl}`].filter(Boolean).join('\n\n')
+        : nextProfile
+          ? JSON.stringify({ creator: nextProfile, summary: summarizeSamples(merged), notes: merged }, null, 2)
+          : JSON.stringify(merged, null, 2),
+    );
+    setStatus(`本次采集 ${data.notes.length} 篇，去重后合计 ${merged.length} 篇。${data.warnings.join(' ')}`);
   }
   async function ai(task: Task) {
     if (!source.trim()) throw new Error('请先采集或导入素材');
@@ -89,6 +98,7 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
     }
     setStatus('模型已返回结果，请核对事实后保存');
   }
+  const sampleStats = summarizeSamples(notes);
   const action = (label: string, fn: () => Promise<void>) => <button disabled={busy} onClick={() => void run(fn)}>{label}</button>;
   const field = (label: string, key: keyof Settings, secret = false) => <label>{label}<input type={secret ? 'password' : 'text'} value={String(settings[key])} onChange={e => setSettings({ ...settings, [key]: e.target.value })} /></label>;
   return <div>
@@ -111,13 +121,16 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
       {!records.length && <p>暂无本地记录。</p>}
     </article> : <>
       <article><h2>素材来源</h2><p>只读取当前网页已加载内容。滚动网页后点击增量采集；不会自动翻页或请求隐藏接口。</p>
-      {action('采集当前页 / 滚动后增量采集', collect)}<button disabled={busy} onClick={() => { setNotes([]); setSource(''); setTopics([]); setSelectedTopicId(''); setStatus('采集样本已清空'); }}>清空样本</button>
+      {action('采集当前页 / 滚动后增量采集', collect)}<button disabled={busy} onClick={() => { setNotes([]); setCreatorPage(''); setCreatorProfile(undefined); setSource(''); setTopics([]); setSelectedTopicId(''); setStatus('采集样本已清空'); }}>清空样本</button>
       <label>粘贴有权使用的素材 / 链接 / 视频字幕<textarea rows={7} value={source} onChange={e => setSource(e.target.value)} /></label>
       <p className="muted">链接需要在浏览器中打开再采集。{section === 3 && '改写 X 热帖时，先打开帖子详情并展开全文，或直接粘贴原文。'}</p>
       <label>导入 TXT / Markdown（请确认使用权）<input type="file" accept=".txt,.md" onChange={e => { const file = e.target.files?.[0]; if (file) void run(async () => { if (file.size > 2_000_000) throw new Error('文件请小于 2 MB'); setSource(await file.text()); setStatus('文件已导入本地'); }); }} /></label>
       </article>
       {section !== 1 && notes.length > 0 && <article><h2>原始内容预览</h2>{notes.map(n => <div key={n.id}><h3>{n.title || '无标题'}</h3><small>{n.author ?? '作者未知'} · {n.noteType} · {n.publishedAt ?? '发布时间未知'}</small><p style={{ whiteSpace: 'pre-wrap' }}>{n.content || '正文未在当前页加载'}</p>{n.images.slice(0, 9).map(url => <img key={url} src={url} alt="原始素材预览" loading="lazy" style={{ width: '30%', margin: '1%' }} />)}{n.video && <video controls src={n.video} style={{ width: '100%' }} />}<p className="muted">视频分析仅依据可见文字、封面与提供字幕，未自动观看或转录视频。</p></div>)}</article>}
-      {section === 1 && <article><h2>已加载样本：{notes.length} 篇</h2><p>图文 {notes.filter(n => n.noteType === 'image').length} · 视频 {notes.filter(n => n.noteType === 'video').length} · 未知 {notes.filter(n => n.noteType === 'unknown').length}</p>
+      {section === 1 && <article><h2>已加载样本：{sampleStats.total} 篇</h2>
+      {creatorProfile && <div className="creator-card">{creatorProfile.avatar && <img className="avatar" src={creatorProfile.avatar} alt={creatorProfile.author ?? '博主头像'} />}<div><strong>{creatorProfile.author ?? '昵称未知'}</strong><p className="muted">{creatorProfile.bio ?? '简介未显示或未采集'}</p><a className="url" href={creatorProfile.url} target="_blank" rel="noreferrer">{creatorProfile.url}</a></div></div>}
+      <p>图文 {sampleStats.image} · 视频 {sampleStats.video} · 未知 {sampleStats.unknown}（建议采集 20–50 篇，可继续滚动增量采集）</p>
+      {sampleStats.total > 0 && <p className="muted">缺失字段统计：无点赞 {sampleStats.missingLikes} 篇 · 无收藏 {sampleStats.missingCollects} 篇 · 无评论 {sampleStats.missingComments} 篇 · 无发布时间 {sampleStats.missingPublishedAt} 篇</p>}
       <p className="muted">内部相对分：同账号同类型中位数归一化，点赞 40%、收藏 40%、评论 20%，缺失权重重新归一；中位数为零时不计算该指标。小样本结论有限，并非官方分数。</p>
       <div className="filters">
         <label>类型<select value={type} onChange={e => setType(e.target.value)}><option value="all">全部类型</option><option value="image">图文</option><option value="video">视频</option></select></label>
@@ -127,7 +140,7 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
         <label>发布日期至<input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></label>
       </div>
       {filterAndSortNotes(rankNotes(notes), { noteType: type, minScore: minimum, sortBy, dateFrom, dateTo }).map(n => <div className="note" key={n.id}><a href={n.sourceUrl} target="_blank" rel="noreferrer">{n.title || '无标题'}</a><small>{n.noteType} · {n.publishedAt ?? '时间未知'} · 赞 {n.metrics.likes ?? '未知'} · 藏 {n.metrics.collects ?? '未知'} · 评 {n.metrics.comments ?? '未知'} · 相对分 {n.relativeScore?.toFixed(2) ?? '未知'} · 同组 {n.peerCount} 篇</small></div>)}
-      {action('保存采集样本', async () => { await saveContent({ title: `笔记样本 ${notes.length} 篇`, kind: 'notes', body: JSON.stringify(notes), sourceUrl: notes[0]?.sourceUrl ?? '' }); setStatus('样本已保存'); })}</article>}
+      {action('保存采集样本', async () => { await saveContent({ title: `${creatorProfile?.author ?? '博主'} 笔记样本 ${notes.length} 篇`, kind: 'notes', body: JSON.stringify({ creator: creatorProfile ?? null, summary: sampleStats, notes }), sourceUrl: creatorProfile?.url ?? notes[0]?.sourceUrl ?? '' }); setStatus('样本已保存'); })}</article>}
       <article><h2>分析与原创创作</h2><label>目标人群、定位、风格、篇幅、选中主题等<textarea rows={4} value={requirements} onChange={e => setRequirements(e.target.value)} /></label><p className="muted">点击下方按钮会将素材和要求发送给所配置的模型提供商。请确认你有权使用这些内容。</p>
       {section === 1 ? action('分析赛道、定位与可模仿性', () => ai('research')) : <>
       {action('单篇结构与优化分析', () => ai('analyze'))}{action('原创标题和正文', () => ai('rewrite'))}{action('视频口播与分镜', () => ai('script'))}
