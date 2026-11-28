@@ -9,6 +9,7 @@ import type { Task } from '../lib/prompts';
 import { withXPostSource } from '../lib/x-to-wechat';
 import { classifyPage } from '../lib/page-context';
 import { parseTopics, type TopicOption } from '../lib/topics';
+import { formatQuickRecordLabel } from '../lib/quick-rewrite';
 
 export function Workspace({ section, openedDraftId }: { section: number; openedDraftId?: string }) {
   const [settings, setSettings] = useState(defaults);
@@ -117,7 +118,7 @@ export function Workspace({ section, openedDraftId }: { section: number; openedD
     </article> : section === 4 ? <article><h2>本地内容</h2><input placeholder="搜索标题、正文或类型" value={query} onChange={e => setQuery(e.target.value)} />
       {action('加载 / 刷新内容库', async () => { setRecords(await library.records.orderBy('createdAt').reverse().toArray()); setStatus('本地记录已加载'); })}
       {action('导出全部记录', async () => { download(JSON.stringify(await library.records.toArray(), null, 2), 'virallens-backup.json', 'application/json'); setStatus('备份已导出，不包含密钥'); })}
-      {records.filter(r => `${r.title} ${r.body} ${r.kind}`.toLowerCase().includes(query.toLowerCase())).map(r => <article key={r.id}><h3>{r.title}</h3><small>{r.kind === 'quick-rewrite' ? '图文改写' : r.kind} · {r.createdAt}</small><button onClick={() => { setOpenedRecord(r); setOutput(r.body); setOutputSource(r.sourceUrl); setStatus('已打开记录，可编辑或导出'); }}>打开</button>{action('删除', async () => { await library.records.delete(r.id); setRecords(items => items.filter(x => x.id !== r.id)); if (openedRecord?.id === r.id) { setOpenedRecord(undefined); setOutput(''); setOutputSource(''); } setStatus('记录已删除'); })}</article>)}
+      {records.filter(r => `${r.title} ${r.body} ${r.kind} ${formatQuickRecordLabel(r.meta)}`.toLowerCase().includes(query.toLowerCase())).map(r => <article key={r.id}><h3>{r.title}</h3><small>{r.kind === 'quick-rewrite' ? formatQuickRecordLabel(r.meta) : r.kind} · {r.createdAt}</small><button onClick={() => { setOpenedRecord(r); setOutput(r.body); setOutputSource(r.sourceUrl); setStatus('已打开记录，可编辑或导出'); }}>打开</button>{action('删除', async () => { await library.records.delete(r.id); setRecords(items => items.filter(x => x.id !== r.id)); if (openedRecord?.id === r.id) { setOpenedRecord(undefined); setOutput(''); setOutputSource(''); } setStatus('记录已删除'); })}</article>)}
       {!records.length && <p>暂无本地记录。</p>}
     </article> : <>
       <article><h2>素材来源</h2><p>只读取当前网页已加载内容。滚动网页后点击增量采集；不会自动翻页或请求隐藏接口。</p>

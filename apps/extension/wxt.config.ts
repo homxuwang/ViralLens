@@ -5,7 +5,7 @@ export default defineConfig({
   manifest: {
     name: 'ViralLens', version: '0.1.0',
     description: 'AI 社媒研究与跨平台内容创作助手',
-    permissions: ['sidePanel', 'activeTab', 'storage'],
+    permissions: ['sidePanel', 'activeTab', 'storage', 'scripting'],
     optional_host_permissions: ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'],
     action: { default_title: '打开 ViralLens' },
   },

@@ -20,3 +20,25 @@ export function xPostId(raw: string): string | undefined {
     return url.pathname.match(/^\/(?:i\/web|[A-Za-z0-9_]+)\/status\/(\d+)(?:\/|$)/)?.[1];
   } catch { return; }
 }
+
+const KNOWN_PLATFORM_HOSTS = new Set([
+  'www.xiaohongshu.com',
+  'mp.weixin.qq.com',
+  'x.com',
+  'www.x.com',
+  'twitter.com',
+  'www.twitter.com',
+]);
+
+export function isKnownPlatformHost(raw: string): boolean {
+  try {
+    return KNOWN_PLATFORM_HOSTS.has(new URL(raw).hostname);
+  } catch { return false; }
+}
+
+export function isReadableWebUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && Boolean(url.hostname);
+  } catch { return false; }
+}

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 const count = z.number().nonnegative().nullable();
 export const noteSchema = z.object({
-  id: z.string(), platform: z.enum(['xiaohongshu', 'wechat', 'x']), sourceUrl: z.string().url(),
+  id: z.string(), platform: z.enum(['xiaohongshu', 'wechat', 'x', 'web']), sourceUrl: z.string().url(),
   author: z.string().nullable(), title: z.string(), content: z.string(),
   noteType: z.enum(['image', 'video', 'article', 'unknown']), images: z.array(z.string().url()), video: z.string().nullable(),
   tags: z.array(z.string()), publishedAt: z.string().nullable(),

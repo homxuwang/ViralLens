@@ -59,3 +59,15 @@ it('博主卡片提取并去重，缺失互动保持未知', () => {
   expect(result.notes[0]?.metrics.likes).toBe(12000);
   expect(result.notes[0]?.metrics.collects).toBeNull();
 });
+
+it('通用网页提取正文并过滤导航与脚本，保留段落结构', () => {
+  document.title = '测试博客';
+  document.body.innerHTML = '<header><nav>顶部导航</nav></header><article><h1>实战复盘</h1><p>第一段事实。</p><p>第二段细节。</p><script>alert(1)</script></article><footer>页脚</footer>';
+  const result = extractPage(document, 'https://blog.example.com/review');
+  expect(result.notes).toHaveLength(1);
+  expect(result.notes[0]?.platform).toBe('web');
+  expect(result.notes[0]?.title).toBe('实战复盘');
+  expect(result.notes[0]?.content).toContain('第一段事实。\n\n第二段细节。');
+  expect(result.notes[0]?.content).not.toContain('顶部导航');
+  expect(result.notes[0]?.content).not.toContain('alert(1)');
+});
